@@ -9,8 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 fight_path_template = 'dataset/fight/fi{num:03d}.mp4'
 nofight_path_template = 'dataset/noFight/nofi{num:03d}.mp4'
 
-# Load video function (same as before but modularized)
-def load_video_with_resizing_and_frame_handling(video_path, target_frames=64, target_size=(224, 224)):
+def load_video_with_resizing_and_frame_handling(video_path, target_frames=32, target_size=(112, 112)):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"Error: Could not open video {video_path}")
@@ -39,32 +38,28 @@ def load_video_with_resizing_and_frame_handling(video_path, target_frames=64, ta
 
     return video_tensor
 
-# Dataset class for fight/noFight videos
 class FightDataset(Dataset):
-    def __init__(self, num_samples=150, target_frames=64, target_size=(224, 224)):
+    def __init__(self, num_samples=150, target_frames=32, target_size=(112, 112)):
         self.num_samples = num_samples
         self.target_frames = target_frames
         self.target_size = target_size
         self.data = []
         self.labels = []
 
-        # Load fight videos
         for i in range(1, self.num_samples + 1):
             video_path = fight_path_template.format(num=i)
             video_tensor = load_video_with_resizing_and_frame_handling(video_path, target_frames, target_size)
             if video_tensor is not None:
                 self.data.append(video_tensor)
-                self.labels.append(1)  # Label 1 for fight
+                self.labels.append(1)
 
-        # Load noFight videos
         for i in range(1, self.num_samples + 1):
             video_path = nofight_path_template.format(num=i)
             video_tensor = load_video_with_resizing_and_frame_handling(video_path, target_frames, target_size)
             if video_tensor is not None:
                 self.data.append(video_tensor)
-                self.labels.append(0)  # Label 0 for no fight
+                self.labels.append(0)
 
-        # Convert lists to numpy arrays
         self.data = np.array(self.data)
         self.labels = np.array(self.labels)
 
@@ -76,28 +71,23 @@ class FightDataset(Dataset):
         label = self.labels[idx]
         return torch.FloatTensor(video).permute(3, 0, 1, 2), torch.LongTensor([label])
 
-# Instantiate dataset and dataloader
 dataset = FightDataset(num_samples=150)
-dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
 
-# I3D Model for Transfer Learning
 class I3DTransferModel(nn.Module):
     def __init__(self, num_classes=2):
         super(I3DTransferModel, self).__init__()
-        self.i3d = models.video.r3d_18(pretrained=True)  # Using pretrained 3D ResNet as a substitute for I3D
-        self.i3d.fc = nn.Linear(self.i3d.fc.in_features, num_classes)  # Replace the final layer
+        self.i3d = models.video.r3d_18(pretrained=True)
+        self.i3d.fc = nn.Linear(self.i3d.fc.in_features, num_classes)
 
     def forward(self, x):
         return self.i3d(x)
 
-# Instantiate the model
 model = I3DTransferModel(num_classes=2)
 
-# Training Setup
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-# Training loop
 def train(model, dataloader, criterion, optimizer, num_epochs=10):
     model.train()
     for epoch in range(num_epochs):
@@ -112,5 +102,4 @@ def train(model, dataloader, criterion, optimizer, num_epochs=10):
         
         print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(dataloader):.4f}")
 
-# Train the model
 train(model, dataloader, criterion, optimizer, num_epochs=10)
